@@ -704,7 +704,7 @@ export default function Dashboard() {
             />
             <MetricCard
               title="Team Utilization"
-              value="87%"
+              value={`${Math.round(avgUtilization)}%`}
               change="+5% vs target"
               changeType="positive"
               icon={Users}
