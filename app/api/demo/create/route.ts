@@ -5,7 +5,10 @@ const OWNER = 'govambam'
 const REPO = 'flowmetrics-demo'
 const BASE_BRANCH = 'main'
 const DEMO_BRANCH = 'demo-bugs'
-const FILE_PATH = 'app/page.tsx'
+const PAGE_FILE_PATH = 'app/page.tsx'
+const LAYOUT_FILE_PATH = 'app/layout.tsx'
+const DEMO_TITLE = 'DEMO - TASKFLOW'
+const NORMAL_TITLE = 'TaskFlow - Simple Task Management'
 
 // Apply bug modifications to the file content
 function applyBugModifications(content: string): string {
@@ -109,34 +112,50 @@ export async function POST() {
     })
     log('✓ Branch created')
 
-    // Step 4: Get the current file content
+    // Step 4: Get the current file contents
     log('')
     log('Reading app/page.tsx from main...')
-    const { data: fileData } = await octokit.repos.getContent({
+    const { data: pageFileData } = await octokit.repos.getContent({
       owner: OWNER,
       repo: REPO,
-      path: FILE_PATH,
+      path: PAGE_FILE_PATH,
       ref: BASE_BRANCH,
     })
 
-    if (Array.isArray(fileData) || fileData.type !== 'file') {
+    if (Array.isArray(pageFileData) || pageFileData.type !== 'file') {
       throw new Error('Expected a file but got a directory')
     }
 
-    const originalContent = Buffer.from(fileData.content, 'base64').toString('utf-8')
-    const fileSha = fileData.sha
-    log(`✓ File retrieved (${originalContent.length} bytes)`)
+    const originalPageContent = Buffer.from(pageFileData.content, 'base64').toString('utf-8')
+    const pageSha = pageFileData.sha
+    log(`✓ File retrieved (${originalPageContent.length} bytes)`)
 
-    // Step 5: Apply bug modifications
+    log('Reading app/layout.tsx from main...')
+    const { data: layoutFileData } = await octokit.repos.getContent({
+      owner: OWNER,
+      repo: REPO,
+      path: LAYOUT_FILE_PATH,
+      ref: BASE_BRANCH,
+    })
+
+    if (Array.isArray(layoutFileData) || layoutFileData.type !== 'file') {
+      throw new Error('Expected a file but got a directory')
+    }
+
+    const originalLayoutContent = Buffer.from(layoutFileData.content, 'base64').toString('utf-8')
+    const layoutSha = layoutFileData.sha
+    log(`✓ File retrieved (${originalLayoutContent.length} bytes)`)
+
+    // Step 5: Apply modifications
     log('')
     log('Introducing bugs...')
     log('  Bug 1: Inverted comparison in deleteTask (!== to ===)')
     log('  Bug 2: State mutation in toggleTask (direct mutation)')
-    const modifiedContent = applyBugModifications(originalContent)
+    const modifiedPageContent = applyBugModifications(originalPageContent)
 
     // Verify bugs were applied
-    const bug1Applied = modifiedContent.includes('task.id === id)')
-    const bug2Applied = modifiedContent.includes('task.completed = !task.completed')
+    const bug1Applied = modifiedPageContent.includes('task.id === id)')
+    const bug2Applied = modifiedPageContent.includes('task.completed = !task.completed')
 
     if (!bug1Applied || !bug2Applied) {
       log('')
@@ -147,22 +166,50 @@ export async function POST() {
       log('✓ All 2 bugs successfully introduced')
     }
 
-    // Step 6: Commit the modified file to demo-bugs branch
+    // Modify layout to change tab title
+    log('')
+    log('Changing tab title to demo mode...')
+    const modifiedLayoutContent = originalLayoutContent.replace(
+      `title: '${NORMAL_TITLE}'`,
+      `title: '${DEMO_TITLE}'`
+    )
+    const titleChanged = modifiedLayoutContent.includes(DEMO_TITLE)
+    if (titleChanged) {
+      log(`✓ Tab title changed to "${DEMO_TITLE}"`)
+    } else {
+      log('⚠️ Warning: Tab title may not have been changed')
+    }
+
+    // Step 6: Commit the modified files to demo-bugs branch
     log('')
     log('Committing changes...')
+
+    // Commit page.tsx with bugs
     await octokit.repos.createOrUpdateFileContents({
       owner: OWNER,
       repo: REPO,
-      path: FILE_PATH,
+      path: PAGE_FILE_PATH,
       message: `feat: Optimize task operations for better performance
 
 - Optimized delete task function
 - Refactored toggle task for efficiency`,
-      content: Buffer.from(modifiedContent).toString('base64'),
-      sha: fileSha,
+      content: Buffer.from(modifiedPageContent).toString('base64'),
+      sha: pageSha,
       branch: DEMO_BRANCH,
     })
-    log('✓ Changes committed')
+    log('✓ app/page.tsx committed')
+
+    // Commit layout.tsx with demo title
+    await octokit.repos.createOrUpdateFileContents({
+      owner: OWNER,
+      repo: REPO,
+      path: LAYOUT_FILE_PATH,
+      message: `chore: Update page title for demo`,
+      content: Buffer.from(modifiedLayoutContent).toString('base64'),
+      sha: layoutSha,
+      branch: DEMO_BRANCH,
+    })
+    log('✓ app/layout.tsx committed')
 
     // Step 7: Create pull request
     log('')

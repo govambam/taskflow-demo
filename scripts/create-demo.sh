@@ -81,14 +81,26 @@ fi
 
 echo -e "${GREEN}✓ All 2 bugs successfully introduced${NC}"
 
+# Change tab title to demo mode
+echo ""
+echo "Changing tab title to demo mode..."
+sed -i '' "s/title: 'TaskFlow - Simple Task Management'/title: 'DEMO - TASKFLOW'/" app/layout.tsx
+
+if grep -q "DEMO - TASKFLOW" app/layout.tsx; then
+    echo -e "${GREEN}✓ Tab title changed to 'DEMO - TASKFLOW'${NC}"
+else
+    echo -e "${YELLOW}⚠️ Warning: Tab title may not have been changed${NC}"
+fi
+
 # Stage and commit changes
 echo ""
 echo "Committing changes..."
-git add app/page.tsx
+git add app/page.tsx app/layout.tsx
 git commit -m "feat: Optimize task operations for better performance
 
 - Optimized delete task function
-- Refactored toggle task for efficiency"
+- Refactored toggle task for efficiency
+- Updated page title for demo"
 
 # Push to origin
 echo ""
@@ -117,6 +129,7 @@ echo ""
 echo "What was created:"
 echo "  • Branch 'demo-bugs' pushed to GitHub"
 echo "  • Pull Request created and opened in browser"
+echo "  • Tab title changed to 'DEMO - TASKFLOW'"
 echo ""
 echo "Bugs introduced:"
 echo "  1. Inverted comparison in deleteTask (line ~97)"
