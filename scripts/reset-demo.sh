@@ -11,6 +11,9 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Linear project name to clean up
+LINEAR_PROJECT_NAME="Web-Demo"
+
 # Check if we're in a git repo
 if ! git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
     echo -e "${RED}Error: Not in a git repository${NC}"
@@ -69,6 +72,72 @@ else
     echo "No remote demo-bugs branch found"
 fi
 
+# Delete Linear issues in the Web-Demo project
+echo ""
+echo "Checking for Linear issues..."
+
+if [ -z "$LINEAR_API_KEY" ]; then
+    echo -e "${YELLOW}⚠️ LINEAR_API_KEY not set - skipping Linear cleanup${NC}"
+else
+    # Find the Web-Demo project
+    PROJECT_RESPONSE=$(curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -H "Authorization: $LINEAR_API_KEY" \
+        -d "{\"query\": \"query { projects(filter: { name: { eq: \\\"$LINEAR_PROJECT_NAME\\\" } }) { nodes { id name } } }\"}" \
+        https://api.linear.app/graphql 2>/dev/null || true)
+
+    PROJECT_ID=$(echo "$PROJECT_RESPONSE" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || true)
+
+    if [ -z "$PROJECT_ID" ]; then
+        echo "No \"$LINEAR_PROJECT_NAME\" project found in Linear"
+    else
+        echo "Found project \"$LINEAR_PROJECT_NAME\" ($PROJECT_ID)"
+
+        # Get all issues in the project
+        ISSUES_RESPONSE=$(curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: $LINEAR_API_KEY" \
+            -d "{\"query\": \"query { issues(filter: { project: { id: { eq: \\\"$PROJECT_ID\\\" } } }) { nodes { id identifier title } } }\"}" \
+            https://api.linear.app/graphql 2>/dev/null || true)
+
+        # Extract issue IDs and identifiers
+        ISSUE_DATA=$(echo "$ISSUES_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    issues = data.get('data', {}).get('issues', {}).get('nodes', [])
+    for issue in issues:
+        print(f\"{issue['id']}|{issue['identifier']}|{issue['title']}\")
+except:
+    pass
+" 2>/dev/null || true)
+
+        if [ -z "$ISSUE_DATA" ]; then
+            echo "No issues found in project"
+        else
+            ISSUE_COUNT=$(echo "$ISSUE_DATA" | wc -l | tr -d ' ')
+            echo "Found $ISSUE_COUNT issue(s) to delete"
+
+            echo "$ISSUE_DATA" | while IFS='|' read -r ISSUE_ID ISSUE_IDENTIFIER ISSUE_TITLE; do
+                if [ -n "$ISSUE_ID" ]; then
+                    echo "  Deleting issue $ISSUE_IDENTIFIER: $ISSUE_TITLE"
+                    DELETE_RESPONSE=$(curl -s -X POST \
+                        -H "Content-Type: application/json" \
+                        -H "Authorization: $LINEAR_API_KEY" \
+                        -d "{\"query\": \"mutation { issueDelete(id: \\\"$ISSUE_ID\\\") { success } }\"}" \
+                        https://api.linear.app/graphql 2>/dev/null || true)
+
+                    if echo "$DELETE_RESPONSE" | grep -q '"success":true'; then
+                        echo -e "  ${GREEN}✓ Issue $ISSUE_IDENTIFIER deleted${NC}"
+                    else
+                        echo -e "  ${YELLOW}⚠️ Could not delete issue $ISSUE_IDENTIFIER${NC}"
+                    fi
+                fi
+            done
+        fi
+    fi
+fi
+
 # Print success message
 echo ""
 echo -e "${GREEN}════════════════════════════════════════════════════════════════${NC}"
@@ -76,9 +145,10 @@ echo -e "${GREEN}✓ Demo reset complete!${NC}"
 echo -e "${GREEN}════════════════════════════════════════════════════════════════${NC}"
 echo ""
 echo "The demo environment has been cleaned up:"
+echo "  • All open PRs closed"
 echo "  • Local demo-bugs branch deleted"
 echo "  • Remote demo-bugs branch deleted"
-echo "  • Any open PRs closed"
+echo "  • Linear issues in Web-Demo project deleted"
 echo ""
 echo "To start a fresh demo:"
 echo -e "  ${YELLOW}npm run create-demo${NC}"

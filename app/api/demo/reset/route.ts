@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server'
 import { Octokit } from '@octokit/rest'
+import { LinearClient } from '@linear/sdk'
 
 const OWNER = 'govambam'
 const REPO = 'flowmetrics-demo'
 const DEMO_BRANCH = 'demo-bugs'
+const LINEAR_PROJECT_NAME = 'Web-Demo'
 
 export async function POST() {
   const logs: string[] = []
@@ -74,6 +76,52 @@ export async function POST() {
         log('No demo-bugs branch found (already deleted or never created)')
       } else {
         throw error
+      }
+    }
+
+    // Step 3: Delete Linear issues in the Web-Demo project
+    log('')
+    log('Checking for Linear issues...')
+    const linearApiKey = process.env.LINEAR_API_KEY
+
+    if (!linearApiKey) {
+      log('⚠️ LINEAR_API_KEY not set - skipping Linear cleanup')
+    } else {
+      try {
+        const linearClient = new LinearClient({ apiKey: linearApiKey })
+
+        // Find the Web-Demo project
+        const projects = await linearClient.projects({
+          filter: { name: { eq: LINEAR_PROJECT_NAME } }
+        })
+
+        const project = projects.nodes[0]
+
+        if (!project) {
+          log(`No "${LINEAR_PROJECT_NAME}" project found in Linear`)
+        } else {
+          log(`Found project "${LINEAR_PROJECT_NAME}" (${project.id})`)
+
+          // Get all issues in the project
+          const issues = await linearClient.issues({
+            filter: { project: { id: { eq: project.id } } }
+          })
+
+          if (issues.nodes.length === 0) {
+            log('No issues found in project')
+          } else {
+            log(`Found ${issues.nodes.length} issue(s) to delete`)
+
+            for (const issue of issues.nodes) {
+              log(`  Deleting issue ${issue.identifier}: ${issue.title}`)
+              await issue.delete()
+              log(`  ✓ Issue ${issue.identifier} deleted`)
+            }
+          }
+        }
+      } catch (linearError: any) {
+        log(`⚠️ Linear cleanup failed: ${linearError.message}`)
+        log('Continuing with reset...')
       }
     }
 
