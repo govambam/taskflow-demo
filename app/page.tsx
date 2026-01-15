@@ -89,11 +89,9 @@ export default function TaskFlow() {
   }
 
   const toggleTask = (id: string) => {
-    const task = tasks.find(t => t.id === id)
-    if (task) {
-      task.completed = !task.completed
-      setTasks(tasks)
-    }
+    setTasks(tasks.map(task =>
+      task.id === id ? { ...task, completed: !task.completed } : task
+    ))
   }
 
   const deleteTask = (id: string) => {
