@@ -18,12 +18,24 @@ function applyBugModifications(content: string): string {
     'setTasks(tasks.filter(task => task.id === id))'
   )
 
-  // Bug 2: Inverted logic in activeCount
-  // Change: !task.completed → task.completed
-  modified = modified.replace(
-    /const activeCount = tasks\.filter\(task => !task\.completed\)\.length/g,
-    'const activeCount = tasks.filter(task => task.completed).length'
-  )
+  // Bug 2: State mutation in toggleTask
+  // Replace the correct immutable update with direct state mutation
+  // This causes React to not re-render because it sees the same reference
+  const correctToggle = `const toggleTask = (id: string) => {
+    setTasks(tasks.map(task =>
+      task.id === id ? { ...task, completed: !task.completed } : task
+    ))
+  }`
+
+  const buggyToggle = `const toggleTask = (id: string) => {
+    const task = tasks.find(t => t.id === id)
+    if (task) {
+      task.completed = !task.completed
+      setTasks(tasks)
+    }
+  }`
+
+  modified = modified.replace(correctToggle, buggyToggle)
 
   return modified
 }
@@ -119,12 +131,12 @@ export async function POST() {
     log('')
     log('Introducing bugs...')
     log('  Bug 1: Inverted comparison in deleteTask (!== to ===)')
-    log('  Bug 2: Inverted logic in activeCount')
+    log('  Bug 2: State mutation in toggleTask (direct mutation)')
     const modifiedContent = applyBugModifications(originalContent)
 
     // Verify bugs were applied
     const bug1Applied = modifiedContent.includes('task.id === id)')
-    const bug2Applied = modifiedContent.includes('tasks.filter(task => task.completed).length')
+    const bug2Applied = modifiedContent.includes('task.completed = !task.completed')
 
     if (!bug1Applied || !bug2Applied) {
       log('')
@@ -142,10 +154,10 @@ export async function POST() {
       owner: OWNER,
       repo: REPO,
       path: FILE_PATH,
-      message: `feat: Add task sorting and improved filtering
+      message: `feat: Optimize task operations for better performance
 
 - Optimized delete task function
-- Improved active task counting`,
+- Refactored toggle task for efficiency`,
       content: Buffer.from(modifiedContent).toString('base64'),
       sha: fileSha,
       branch: DEMO_BRANCH,
@@ -158,8 +170,8 @@ export async function POST() {
     const { data: pr } = await octokit.pulls.create({
       owner: OWNER,
       repo: REPO,
-      title: 'feat: Add task sorting and improved filtering',
-      body: 'This PR improves task management with better delete and counting logic.',
+      title: 'feat: Optimize task operations for better performance',
+      body: 'This PR optimizes task management with improved delete and toggle logic.',
       head: DEMO_BRANCH,
       base: BASE_BRANCH,
     })
@@ -175,8 +187,9 @@ export async function POST() {
     log('  1. Inverted comparison in deleteTask')
     log('     task.id === id  (should be !==)')
     log('')
-    log('  2. Inverted logic in activeCount')
-    log('     task.completed  (should be !task.completed)')
+    log('  2. State mutation in toggleTask')
+    log('     Mutates task directly instead of creating new array')
+    log('     Causes checkbox to not visually update')
 
     return NextResponse.json({
       success: true,

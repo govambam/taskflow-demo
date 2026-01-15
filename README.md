@@ -121,11 +121,11 @@ npm run reset-demo
 | Bug | Location | Issue | Should Be |
 |-----|----------|-------|-----------|
 | 1 | `deleteTask()` | `task.id === id` (inverted) | `task.id !== id` |
-| 2 | `activeCount` | `task.completed` (inverted) | `!task.completed` |
+| 2 | `toggleTask()` | Direct state mutation | Immutable update with spread |
 
 These are realistic bugs that Macroscope's code review should catch:
-- Inverted filter logic (deletes everything EXCEPT the clicked task)
-- Inverted boolean logic (counts completed instead of active tasks)
+- **Bug 1:** Inverted filter logic (deletes everything EXCEPT the clicked task)
+- **Bug 2:** React state mutation anti-pattern (checkbox won't visually update)
 
 **`npm run reset-demo`** cleans up everything:
 - Deletes local `demo-bugs` branch

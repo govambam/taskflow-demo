@@ -58,17 +58,18 @@ git checkout -b demo-bugs
 echo "Introducing Bug 1: Inverted comparison in deleteTask..."
 sed -i '' 's/task\.id !== id/task.id === id/' app/page.tsx
 
-# Introduce Bug 2: Inverted logic in activeCount
-# Change: !task.completed  →  task.completed
-echo "Introducing Bug 2: Inverted logic in activeCount..."
-sed -i '' 's/const activeCount = tasks\.filter(task => !task\.completed)\.length/const activeCount = tasks.filter(task => task.completed).length/' app/page.tsx
+# Introduce Bug 2: State mutation in toggleTask
+# Replace the correct immutable update with direct state mutation
+# This causes React to not re-render because it sees the same reference
+echo "Introducing Bug 2: State mutation in toggleTask..."
+perl -i -0pe 's/const toggleTask = \(id: string\) => \{\n    setTasks\(tasks\.map\(task =>\n      task\.id === id \? \{ \.\.\.task, completed: !task\.completed \} : task\n    \)\)\n  \}/const toggleTask = (id: string) => {\n    const task = tasks.find(t => t.id === id)\n    if (task) {\n      task.completed = !task.completed\n      setTasks(tasks)\n    }\n  }/s' app/page.tsx
 
 # Verify bugs were introduced
 echo ""
 echo "Verifying bugs were introduced..."
 
 BUG1=$(grep -c "task.id === id" app/page.tsx || true)
-BUG2=$(grep -c "tasks.filter(task => task.completed).length" app/page.tsx || true)
+BUG2=$(grep -c "task.completed = !task.completed" app/page.tsx || true)
 
 if [ "$BUG1" -eq 0 ] || [ "$BUG2" -eq 0 ]; then
     echo -e "${RED}Error: Failed to introduce all bugs. Rolling back...${NC}"
@@ -84,10 +85,10 @@ echo -e "${GREEN}✓ All 2 bugs successfully introduced${NC}"
 echo ""
 echo "Committing changes..."
 git add app/page.tsx
-git commit -m "feat: Add task sorting and improved filtering
+git commit -m "feat: Optimize task operations for better performance
 
 - Optimized delete task function
-- Improved active task counting"
+- Refactored toggle task for efficiency"
 
 # Push to origin
 echo ""
@@ -103,8 +104,8 @@ fi
 echo ""
 echo "Creating Pull Request..."
 gh pr create --base main --head demo-bugs \
-  --title "feat: Add task sorting and improved filtering" \
-  --body "This PR improves task management with better delete and counting logic." \
+  --title "feat: Optimize task operations for better performance" \
+  --body "This PR optimizes task management with improved delete and toggle logic." \
   --web
 
 # Print success message
@@ -121,8 +122,9 @@ echo "Bugs introduced:"
 echo "  1. Inverted comparison in deleteTask (line ~97)"
 echo "     task.id === id  (should be !==)"
 echo ""
-echo "  2. Inverted logic in activeCount (line ~106)"
-echo "     task.completed  (should be !task.completed)"
+echo "  2. State mutation in toggleTask (line ~91)"
+echo "     Mutates task directly instead of creating new array"
+echo "     Causes checkbox to not visually update"
 echo ""
 echo -e "To reset the demo later: ${YELLOW}npm run reset-demo${NC}"
 echo ""
