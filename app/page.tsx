@@ -104,7 +104,7 @@ export default function TaskFlow() {
     return true
   })
 
-  const activeCount = tasks.filter(task => task.completed).length
+  const activeCount = tasks.filter(task => !task.completed).length
 
   // Don't render until loaded to prevent hydration mismatch
   if (!isLoaded) {
