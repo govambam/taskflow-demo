@@ -183,7 +183,7 @@ export default function TaskFlow() {
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              {f.charAt(0).toUpperCase() + f.slice(1)}
+              {f === 'completed' ? 'Done' : f.charAt(0).toUpperCase() + f.slice(1)}
               {f === 'active' && activeCount > 0 && (
                 <span className="ml-1.5 px-1.5 py-0.5 text-xs bg-indigo-100 text-indigo-600 rounded-full">
                   {activeCount}
