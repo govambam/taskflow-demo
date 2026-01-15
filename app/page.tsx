@@ -97,7 +97,7 @@ export default function TaskFlow() {
   }
 
   const deleteTask = (id: string) => {
-    setTasks(tasks.filter(task => task.id === id))
+    setTasks(tasks.filter(task => task.id !== id))
   }
 
   const filteredTasks = tasks.filter(task => {
