@@ -173,7 +173,13 @@ export default function TaskFlow() {
 
         {/* Filter Tabs */}
         <div className="flex gap-1 p-1 bg-gray-100 rounded-xl mb-6 w-fit">
-          {(['all', 'active', 'completed'] as FilterType[]).map((f) => (
+          {(['all', 'active', 'completed'] as FilterType[]).map((f) => {
+            const filterLabels: Record<FilterType, string> = {
+              all: 'All',
+              active: 'Active',
+              completed: 'Done',
+            };
+            return (
             <button
               key={f}
               onClick={() => setFilter(f)}
@@ -183,14 +189,15 @@ export default function TaskFlow() {
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              {f.charAt(0).toUpperCase() + f.slice(1)}
+              {filterLabels[f]}
               {f === 'active' && activeCount > 0 && (
                 <span className="ml-1.5 px-1.5 py-0.5 text-xs bg-indigo-100 text-indigo-600 rounded-full">
                   {activeCount}
                 </span>
               )}
             </button>
-          ))}
+            );
+          })}
         </div>
 
         {/* Task List */}
