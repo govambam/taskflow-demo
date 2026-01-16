@@ -2,12 +2,28 @@ import { NextResponse } from 'next/server'
 import { Octokit } from '@octokit/rest'
 import { LinearClient } from '@linear/sdk'
 
-const OWNER = 'govambam'
-const REPO = 'flowmetrics-demo'
 const DEMO_BRANCH = 'demo-bugs'
 const LINEAR_PROJECT_NAME = 'Web-Demo'
 
-export async function POST() {
+// User to repository mapping
+const USER_REPOS: Record<string, { owner: string; repo: string }> = {
+  'Ryan': { owner: 'rkp2525', repo: 'taskflow-demo' },
+  'Ivan': { owner: 'govambam', repo: 'taskflow-demo' },
+}
+
+// Get repository config from userName
+function getRepoConfig(userName: string): { owner: string; repo: string } | { error: string } {
+  const config = USER_REPOS[userName]
+  if (!config) {
+    const validUsers = Object.keys(USER_REPOS).join(', ')
+    return {
+      error: `Invalid user "${userName}". Valid users: ${validUsers}`
+    }
+  }
+  return config
+}
+
+export async function POST(request: Request) {
   const logs: string[] = []
   const log = (message: string) => {
     console.log(message)
@@ -15,26 +31,86 @@ export async function POST() {
   }
 
   try {
+    // Get userName from request body
+    const body = await request.json().catch(() => ({}))
+    const userName = body.userName
+
+    if (!userName) {
+      return NextResponse.json({
+        success: false,
+        output: '❌ Error: No user selected. Please select your name from the dropdown.',
+        error: 'No user selected',
+      })
+    }
+
     // Check for GitHub token
     const token = process.env.GITHUB_TOKEN
     if (!token) {
       return NextResponse.json({
         success: false,
-        output: 'Error: GITHUB_TOKEN environment variable is not set',
+        output: `❌ Error: GITHUB_TOKEN environment variable is not set.
+
+To fix this:
+1. Go to Vercel → Your Project → Settings → Environment Variables
+2. Add GITHUB_TOKEN with a GitHub Personal Access Token
+3. The token needs 'repo' scope
+4. Redeploy your project
+
+Create a token at: https://github.com/settings/tokens`,
         error: 'Missing GitHub token',
       })
     }
 
+    // Get repository configuration from userName
+    const repoConfig = getRepoConfig(userName)
+    if ('error' in repoConfig) {
+      return NextResponse.json({
+        success: false,
+        output: `❌ Error: ${repoConfig.error}`,
+        error: 'Invalid user',
+      })
+    }
+
+    const { owner, repo } = repoConfig
+
     log('🧹 Resetting demo environment...')
+    log(`User: ${userName}`)
+    log(`Repository: ${owner}/${repo}`)
     log('')
 
     const octokit = new Octokit({ auth: token })
 
+    // Verify we can access the repository
+    log('Verifying repository access...')
+    try {
+      await octokit.repos.get({ owner, repo })
+      log('✓ Repository accessible')
+    } catch (error: any) {
+      if (error.status === 404) {
+        return NextResponse.json({
+          success: false,
+          output: `❌ Error: Cannot access repository "${owner}/${repo}"
+
+Possible causes:
+1. The repository doesn't exist
+2. Your GITHUB_TOKEN doesn't have access to this repository
+3. The repository is private and the token lacks permissions
+
+To fix:
+• Make sure the repository exists at https://github.com/${owner}/${repo}
+• Ensure your token has 'repo' scope`,
+          error: 'Repository not accessible',
+        })
+      }
+      throw error
+    }
+
     // Step 1: Find and close ALL open PRs in the repo
+    log('')
     log('Looking for all open PRs...')
     const { data: openPRs } = await octokit.pulls.list({
-      owner: OWNER,
-      repo: REPO,
+      owner,
+      repo,
       state: 'open',
     })
 
@@ -43,8 +119,8 @@ export async function POST() {
       for (const pr of openPRs) {
         log(`  Closing PR #${pr.number}: ${pr.title}`)
         await octokit.pulls.update({
-          owner: OWNER,
-          repo: REPO,
+          owner,
+          repo,
           pull_number: pr.number,
           state: 'closed',
         })
@@ -59,15 +135,15 @@ export async function POST() {
     log('Checking for demo-bugs branch...')
     try {
       await octokit.git.getRef({
-        owner: OWNER,
-        repo: REPO,
+        owner,
+        repo,
         ref: `heads/${DEMO_BRANCH}`,
       })
       // Branch exists, delete it
       log('Deleting demo-bugs branch...')
       await octokit.git.deleteRef({
-        owner: OWNER,
-        repo: REPO,
+        owner,
+        repo,
         ref: `heads/${DEMO_BRANCH}`,
       })
       log('✓ Branch deleted')

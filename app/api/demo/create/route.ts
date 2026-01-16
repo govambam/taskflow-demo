@@ -1,14 +1,30 @@
 import { NextResponse } from 'next/server'
 import { Octokit } from '@octokit/rest'
 
-const OWNER = 'govambam'
-const REPO = 'flowmetrics-demo'
 const BASE_BRANCH = 'main'
 const DEMO_BRANCH = 'demo-bugs'
 const PAGE_FILE_PATH = 'app/page.tsx'
 const LAYOUT_FILE_PATH = 'app/layout.tsx'
 const DEMO_TITLE = 'DEMO - TASKFLOW'
 const NORMAL_TITLE = 'TaskFlow - Simple Task Management'
+
+// User to repository mapping
+const USER_REPOS: Record<string, { owner: string; repo: string }> = {
+  'Ryan': { owner: 'rkp2525', repo: 'taskflow-demo' },
+  'Ivan': { owner: 'govambam', repo: 'taskflow-demo' },
+}
+
+// Get repository config from userName
+function getRepoConfig(userName: string): { owner: string; repo: string } | { error: string } {
+  const config = USER_REPOS[userName]
+  if (!config) {
+    const validUsers = Object.keys(USER_REPOS).join(', ')
+    return {
+      error: `Invalid user "${userName}". Valid users: ${validUsers}`
+    }
+  }
+  return config
+}
 
 // Apply bug modifications to the file content
 function applyBugModifications(content: string): string {
@@ -43,7 +59,7 @@ function applyBugModifications(content: string): string {
   return modified
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   const logs: string[] = []
   const log = (message: string) => {
     console.log(message)
@@ -51,26 +67,86 @@ export async function POST() {
   }
 
   try {
+    // Get userName from request body
+    const body = await request.json().catch(() => ({}))
+    const userName = body.userName
+
+    if (!userName) {
+      return NextResponse.json({
+        success: false,
+        output: '❌ Error: No user selected. Please select your name from the dropdown.',
+        error: 'No user selected',
+      })
+    }
+
     // Check for GitHub token
     const token = process.env.GITHUB_TOKEN
     if (!token) {
       return NextResponse.json({
         success: false,
-        output: 'Error: GITHUB_TOKEN environment variable is not set',
+        output: `❌ Error: GITHUB_TOKEN environment variable is not set.
+
+To fix this:
+1. Go to Vercel → Your Project → Settings → Environment Variables
+2. Add GITHUB_TOKEN with a GitHub Personal Access Token
+3. The token needs 'repo' scope
+4. Redeploy your project
+
+Create a token at: https://github.com/settings/tokens`,
         error: 'Missing GitHub token',
       })
     }
 
+    // Get repository configuration from userName
+    const repoConfig = getRepoConfig(userName)
+    if ('error' in repoConfig) {
+      return NextResponse.json({
+        success: false,
+        output: `❌ Error: ${repoConfig.error}`,
+        error: 'Invalid user',
+      })
+    }
+
+    const { owner, repo } = repoConfig
+
     log('🚀 Creating demo branch with intentional bugs...')
+    log(`User: ${userName}`)
+    log(`Repository: ${owner}/${repo}`)
     log('')
 
     const octokit = new Octokit({ auth: token })
 
+    // Verify we can access the repository
+    log('Verifying repository access...')
+    try {
+      await octokit.repos.get({ owner, repo })
+      log('✓ Repository accessible')
+    } catch (error: any) {
+      if (error.status === 404) {
+        return NextResponse.json({
+          success: false,
+          output: `❌ Error: Cannot access repository "${owner}/${repo}"
+
+Possible causes:
+1. The repository doesn't exist
+2. Your GITHUB_TOKEN doesn't have access to this repository
+3. The repository is private and the token lacks permissions
+
+To fix:
+• Make sure the repository exists at https://github.com/${owner}/${repo}
+• Ensure your token has 'repo' scope`,
+          error: 'Repository not accessible',
+        })
+      }
+      throw error
+    }
+
     // Step 1: Get the SHA of the main branch
+    log('')
     log('Getting reference to main branch...')
     const { data: mainRef } = await octokit.git.getRef({
-      owner: OWNER,
-      repo: REPO,
+      owner,
+      repo,
       ref: `heads/${BASE_BRANCH}`,
     })
     const mainSha = mainRef.object.sha
@@ -81,15 +157,15 @@ export async function POST() {
     log('Checking for existing demo-bugs branch...')
     try {
       await octokit.git.getRef({
-        owner: OWNER,
-        repo: REPO,
+        owner,
+        repo,
         ref: `heads/${DEMO_BRANCH}`,
       })
       // Branch exists, delete it
       log('Deleting existing demo-bugs branch...')
       await octokit.git.deleteRef({
-        owner: OWNER,
-        repo: REPO,
+        owner,
+        repo,
         ref: `heads/${DEMO_BRANCH}`,
       })
       log('✓ Existing branch deleted')
@@ -105,8 +181,8 @@ export async function POST() {
     log('')
     log('Creating demo-bugs branch...')
     await octokit.git.createRef({
-      owner: OWNER,
-      repo: REPO,
+      owner,
+      repo,
       ref: `refs/heads/${DEMO_BRANCH}`,
       sha: mainSha,
     })
@@ -116,8 +192,8 @@ export async function POST() {
     log('')
     log('Reading app/page.tsx from main...')
     const { data: pageFileData } = await octokit.repos.getContent({
-      owner: OWNER,
-      repo: REPO,
+      owner,
+      repo,
       path: PAGE_FILE_PATH,
       ref: BASE_BRANCH,
     })
@@ -132,8 +208,8 @@ export async function POST() {
 
     log('Reading app/layout.tsx from main...')
     const { data: layoutFileData } = await octokit.repos.getContent({
-      owner: OWNER,
-      repo: REPO,
+      owner,
+      repo,
       path: LAYOUT_FILE_PATH,
       ref: BASE_BRANCH,
     })
@@ -186,8 +262,8 @@ export async function POST() {
 
     // Commit page.tsx with bugs
     await octokit.repos.createOrUpdateFileContents({
-      owner: OWNER,
-      repo: REPO,
+      owner,
+      repo,
       path: PAGE_FILE_PATH,
       message: `feat: Optimize task operations for better performance
 
@@ -201,8 +277,8 @@ export async function POST() {
 
     // Commit layout.tsx with demo title
     await octokit.repos.createOrUpdateFileContents({
-      owner: OWNER,
-      repo: REPO,
+      owner,
+      repo,
       path: LAYOUT_FILE_PATH,
       message: `chore: Update page title for demo`,
       content: Buffer.from(modifiedLayoutContent).toString('base64'),
@@ -215,8 +291,8 @@ export async function POST() {
     log('')
     log('Creating Pull Request...')
     const { data: pr } = await octokit.pulls.create({
-      owner: OWNER,
-      repo: REPO,
+      owner,
+      repo,
       title: 'feat: Optimize task operations for better performance',
       body: 'This PR optimizes task management with improved delete and toggle logic.',
       head: DEMO_BRANCH,

@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
-import { Settings, X, Play, RotateCcw, CheckCircle, XCircle, Loader2, Terminal } from 'lucide-react'
+import { Settings, X, Play, RotateCcw, CheckCircle, XCircle, Loader2, Terminal, ChevronDown, User } from 'lucide-react'
 
 type ScriptStatus = 'idle' | 'running' | 'success' | 'error'
 
@@ -10,13 +10,37 @@ interface ScriptResult {
   error?: string
 }
 
+const DEMO_USERS = ['Ryan', 'Ivan'] as const
+type DemoUser = typeof DEMO_USERS[number]
+
+const STORAGE_KEY = 'demo-user-name'
+
 export default function DemoControls() {
   const [isVisible, setIsVisible] = useState(false)
   const [isOpen, setIsOpen] = useState(false)
+  const [selectedUser, setSelectedUser] = useState<DemoUser | ''>('')
   const [createStatus, setCreateStatus] = useState<ScriptStatus>('idle')
   const [resetStatus, setResetStatus] = useState<ScriptStatus>('idle')
   const [output, setOutput] = useState<string>('')
   const [lastAction, setLastAction] = useState<string>('')
+
+  // Load selected user from localStorage on mount
+  useEffect(() => {
+    const savedUser = localStorage.getItem(STORAGE_KEY)
+    if (savedUser && DEMO_USERS.includes(savedUser as DemoUser)) {
+      setSelectedUser(savedUser as DemoUser)
+    }
+  }, [])
+
+  // Save selected user to localStorage when changed
+  const handleUserChange = (user: DemoUser | '') => {
+    setSelectedUser(user)
+    if (user) {
+      localStorage.setItem(STORAGE_KEY, user)
+    } else {
+      localStorage.removeItem(STORAGE_KEY)
+    }
+  }
 
   // Listen for keyboard shortcut: Cmd/Ctrl + Shift + D
   useEffect(() => {
@@ -37,6 +61,8 @@ export default function DemoControls() {
   }, [isOpen])
 
   const runScript = useCallback(async (action: 'create' | 'reset') => {
+    if (!selectedUser) return
+
     const setStatus = action === 'create' ? setCreateStatus : setResetStatus
     setStatus('running')
     setOutput('')
@@ -45,6 +71,10 @@ export default function DemoControls() {
     try {
       const response = await fetch(`/api/demo/${action}`, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userName: selectedUser }),
       })
 
       const data: ScriptResult & { success: boolean } = await response.json()
@@ -55,9 +85,10 @@ export default function DemoControls() {
       setOutput(`Error: ${error.message}`)
       setStatus('error')
     }
-  }, [])
+  }, [selectedUser])
 
   const isRunning = createStatus === 'running' || resetStatus === 'running'
+  const canRunActions = selectedUser !== '' && !isRunning
 
   // Don't render until user triggers the shortcut
   if (!isVisible) {
@@ -107,12 +138,44 @@ export default function DemoControls() {
 
             {/* Content */}
             <div className="p-6">
+              {/* User Selection */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select your name
+                </label>
+                <div className="relative">
+                  <select
+                    value={selectedUser}
+                    onChange={(e) => handleUserChange(e.target.value as DemoUser | '')}
+                    disabled={isRunning}
+                    className="w-full appearance-none bg-white border-2 border-gray-200 rounded-xl px-4 py-3 pr-10 text-gray-900 font-medium focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <option value="">Choose a user...</option>
+                    {DEMO_USERS.map((user) => (
+                      <option key={user} value={user}>{user}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                </div>
+                {selectedUser && (
+                  <div className="mt-2 flex items-center gap-2 text-sm text-green-600">
+                    <User className="w-4 h-4" />
+                    <span>Ready to run demos as <strong>{selectedUser}</strong></span>
+                  </div>
+                )}
+                {!selectedUser && (
+                  <p className="mt-2 text-sm text-amber-600">
+                    Please select your name to enable demo controls
+                  </p>
+                )}
+              </div>
+
               {/* Action Buttons */}
               <div className="grid grid-cols-2 gap-4 mb-6">
                 {/* Create Demo Button */}
                 <button
                   onClick={() => runScript('create')}
-                  disabled={isRunning}
+                  disabled={!canRunActions}
                   className="flex flex-col items-center gap-2 p-4 bg-indigo-50 hover:bg-indigo-100 border-2 border-indigo-200 hover:border-indigo-300 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
                 >
                   <div className="w-10 h-10 bg-indigo-500 group-hover:bg-indigo-600 rounded-lg flex items-center justify-center transition-colors">
@@ -133,7 +196,7 @@ export default function DemoControls() {
                 {/* Reset Demo Button */}
                 <button
                   onClick={() => runScript('reset')}
-                  disabled={isRunning}
+                  disabled={!canRunActions}
                   className="flex flex-col items-center gap-2 p-4 bg-slate-50 hover:bg-slate-100 border-2 border-slate-200 hover:border-slate-300 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
                 >
                   <div className="w-10 h-10 bg-slate-600 group-hover:bg-slate-700 rounded-lg flex items-center justify-center transition-colors">
